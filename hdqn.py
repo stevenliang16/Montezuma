@@ -1,6 +1,8 @@
 from keras.models import Sequential, Model
 from keras.layers import Dense, Conv2D, Flatten, Input, concatenate
 
+actionSetSize = 8
+goalSetSize = 6
 
 class Hdqn:
     
@@ -15,7 +17,7 @@ class Hdqn:
         outState = Flatten()(xState)
         mergedSignal = concatenate([outState, goal], axis=-1)
         mergedSignal = Dense(512, activation = 'relu')(mergedSignal)
-        outputAction = Dense(18, activation = 'relu')(mergedSignal)
+        outputAction = Dense(actionSetSize, activation = 'relu')(mergedSignal)
         controller = Model(inputs=[state, goal], outputs=outputAction)
         controller.compile(loss = 'mean_squared_error', optimizer = 'Adam')
         
@@ -29,7 +31,7 @@ class Hdqn:
         outStateTarget = Flatten()(xStateTarget)
         mergedSignalTarget = concatenate([outStateTarget, goalTarget], axis=-1)
         mergedSignalTarget = Dense(512, activation = 'relu')(mergedSignalTarget)
-        outputActionTarget = Dense(18, activation = 'relu')(mergedSignalTarget)
+        outputActionTarget = Dense(actionSetSize, activation = 'relu')(mergedSignalTarget)
         controllerTarget = Model(inputs=[stateTarget, goalTarget], outputs=outputActionTarget)
         controllerTarget.compile(loss = 'mean_squared_error', optimizer = 'Adam')
         
@@ -39,7 +41,7 @@ class Hdqn:
         meta.add(Conv2D(64, (3, 3), strides = 1, activation = 'relu', padding = 'valid'))
         meta.add(Flatten())
         meta.add(Dense(512, activation = 'relu'))
-        meta.add(Dense(18 , activation = 'relu')) # Total number of actions = 18 ?????
+        meta.add(Dense(goalSetSize, activation = 'relu')) # Total number of actions = 18 ?????
         meta.compile(loss = 'mean_squared_error', optimizer = 'Adam')
 
         metaTarget = Sequential()
@@ -48,12 +50,12 @@ class Hdqn:
         metaTarget.add(Conv2D(64, (3, 3), strides = 1, activation = 'relu', padding = 'valid'))
         metaTarget.add(Flatten())
         metaTarget.add(Dense(512, activation = 'relu'))
-        metaTarget.add(Dense(18 , activation = 'relu')) # Total number of actions = 18 ?????
+        metaTarget.add(Dense(goalSetSize, activation = 'relu')) # Total number of actions = 18 ?????
         metaTarget.compile(loss = 'mean_squared_error', optimizer = 'Adam')
         
-        self.controlletNet = controller
+        self.controllerNet = controller
         self.metaNet = meta
-        self.targetControlletNet = controllerTarget
+        self.targetControllerNet = controllerTarget
         self.targetMetaNet = metaTarget
         
     def saveWeight(self):

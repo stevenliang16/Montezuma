@@ -35,18 +35,15 @@ class Agent:
 
     def selectMove(self, state, goal):
         goalVec = utils.oneHot(goal)
-        stateVec = utils.reshape(state)
-        vector = np.concatenate([stateVec, goalVec], axis=1)
         if self.controllerEpsilon[goal] < random.random():
             # predict action
-            return np.argmax(self.net.controller.predict(vector, verbose=0))
+            return np.argmax(self.net.controller.predict([state, goalVec], verbose=0))
         return random.choice(self.actionSet)
 
     def selectGoal(self, state):
         if self.metaEpsilon < random.random():
-            stateVec = utils.reshape(state)
             # predict action
-            pred = self.net.meta_controller.predict(stateVec, verbose=0)
+            pred = self.net.meta_controller.predict(state, verbose=0)
             print("pred shape: " + str(pred.shape))
             return np.argmax(pred)
         print("Exploring")
@@ -69,47 +66,57 @@ class Agent:
     
     def _update(self):
         exps = [random.choice(self.memory) for _ in range(self.nSamples)]
-        stateVectors = np.squeeze(np.asarray([np.concatenate([exp.state, exp.goal], axis=1) for exp in exps]))
-        nextStateVectors = np.squeeze(np.asarray([np.concatenate([exp.next_state, exp.goal], axis=1) for exp in exps]))
-        
-        rewardVectors = self.net.controller.predict(stateVectors, verbose=0)
-        nextStateRewardVectors = self.net.targetController.predict(nextStateVectors, verbose=0)
+        # stateVectors = np.squeeze(np.asarray([np.concatenate([exp.state, exp.goal], axis=1) for exp in exps]))
+        stateVector = []
+        goalVector = []
+        for exp in exps:
+            stateVector.append(exp.state)
+            goalVector.append(utils.oneHot(exp.goal))
+        stateVector = np.asarray(stateVector)
+        goalVector = np.asarray(goalVector)
+        # nextStateVectors = np.squeeze(np.asarray([np.concatenate([exp.next_state, exp.goal], axis=1) for exp in exps]))
+        nextStateVector = []
+        for exp in exps:
+            nextStateVector.append(exp.next_state)
+        nextStateVector = np.asarray(nextStateVector)
+        rewardVectors = self.net.controllerNet.predict([stateVector, goalVector], verbose=0)
+        nextStateRewardVectors = self.net.targetControllerNet.predict([nextStateVector, goalVector], verbose=0)
 
         for i, exp in enumerate(exps):
             rewardVectors[i][exp.action] = exp.reward
             if not exp.done:
                 rewardVectors[i][exp.action] += self.gamma * max(nextStateRewardVectors[i])
         rewardVectors = np.asarray(rewardVectors)
-        self.net.controller.fit(stateVectors, rewardVectors, verbose=0)
+        self.net.controllerNet.fit([stateVector, goalVector], rewardVectors, verbose=0)
         
         #Update target network
-        controllerWeights = self.net.controller.get_weights()
-        controllerTargetWeights = self.net.targetController.get_weights()
+        controllerWeights = self.net.controllerNet.get_weights()
+        controllerTargetWeights = self.net.targetControllerNet.get_weights()
         for i in range(len(controllerWeights)):
             controllerTargetWeights[i] = self.targetTau * controllerWeights[i] + (1 - self.targetTau) * controllerTargetWeights[i]
-        self.net.targetController.set_weights(controllerTargetWeights)
+        self.net.targetControllerNet.set_weights(controllerTargetWeights)
 
     def _update_meta(self):
         if 0 < len(self.metaMemory):
             exps = [random.choice(self.metaMemory) for _ in range(self.metaNSamples)]
-            stateVectors = np.squeeze(np.asarray([exp.state for exp in exps]))
-            nextStateVectors = np.squeeze(np.asarray([exp.next_state for exp in exps]))
+            stateVectors = np.asarray([exp.state for exp in exps])
+            nextStateVectors = np.asarray([exp.next_state for exp in exps])
             
-            rewardVectors = self.net.meta.predict(stateVectors, verbose=0)
-            nextStateRewardVectors = self.net.metaTarget.predict(nextStateVectors, verbose=0)
+            rewardVectors = self.net.metaNet.predict(stateVectors, verbose=0)
+            nextStateRewardVectors = self.net.targetMetaNet.predict(nextStateVectors, verbose=0)
 
             for i, exp in enumerate(exps):
                 rewardVectors[i][np.argmax(exp.goal)] = exp.reward
                 if not exp.done:
                     rewardVectors[i][np.argmax(exp.goal)] += self.gamma * max(nextStateRewardVectors[i])
-            self.net.meta.fit(stateVectors, rewardVectors, verbose=0)
+            self.net.metaNet.fit(stateVectors, rewardVectors, verbose=0)
             
             #Update target network
-            metaWeights = self.net.meta.get_weights()
-            metaTargetWeights = self.net.metaTarget.get_weights()
+            metaWeights = self.net.metaNet.get_weights()
+            metaTargetWeights = self.net.targetMetaNet.get_weights()
             for i in range(len(metaWeights)):
                 metaTargetWeights[i] = self.targetTau * metaWeights[i] + (1 - self.targetTau) * metaTargetWeights[i]
-            self.net.metaTarget.set_weights(metaTargetWeights)
+            self.net.targetMetaNet.set_weights(metaTargetWeights)
 
     def update(self, meta=False):
         if meta:
@@ -122,6 +129,5 @@ class Agent:
             (defaultAnnealSteps - max(0, stepCount - defaultRandomPlaySteps)) / defaultAnnealSteps
 
     def annealControllerEpsilon(self, stepCount, goal):
-        self.ControllerEpsilon[goal] = defaultEndEpsilon + (defaultControllerEpsilon[goal] - defaultEndEpsilon) * \
+        self.controllerEpsilon[goal] = defaultEndEpsilon + (defaultControllerEpsilon[goal] - defaultEndEpsilon) * \
             (defaultAnnealSteps - max(0, stepCount - defaultRandomPlaySteps)) / defaultAnnealSteps
-

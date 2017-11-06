@@ -1,7 +1,7 @@
 import numpy as np
 def oneHot(goal):
-    vec = np.zeros((1,6))
-    vec[0, goal] = 1
+    vec = np.zeros(6)
+    vec[goal] = 1
     return vec
 
 def reshape(state):

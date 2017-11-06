@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 import cv2
+import numpy as np
 from ale_python_interface import ALEInterface
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ class ALEEnvironment():
   def __init__(self, rom_file, args):
 
     self.ale = ALEInterface()
+    '''
     if args.display_screen:
       if sys.platform == 'darwin':
         import pygame
@@ -20,9 +22,10 @@ class ALEEnvironment():
       elif sys.platform.startswith('linux'):
         self.ale.setBool('sound', True)
       self.ale.setBool('display_screen', True)
-
+    self.ale.setBool('display_screen', True)
+    '''
     self.ale.setInt('frame_skip', args.frame_skip)
-    self.ale.setFloat('repeat_action_probability', args.repeat_action_probability)
+    #self.ale.setFloat('repeat_action_probability', args.repeat_action_probability)
     self.ale.setBool('color_averaging', args.color_averaging)
 
     if args.random_seed:
@@ -91,6 +94,12 @@ class ALEEnvironment():
     resized = cv2.resize(screen, (self.screen_width, self.screen_height))
     return resized
 
+  # add color channel for input of network
+  def getState(self):
+    screen = self.ale.getScreenGrayscale()
+    resized = cv2.resize(screen, (self.screen_width, self.screen_height))
+    return np.reshape(resized, (84, 84, 1))
+
   def isTerminal(self):
     if self.mode == 'train':
       return self.ale.game_over() or self.life_lost
@@ -98,6 +107,7 @@ class ALEEnvironment():
 
   def reset(self):
     self.ale.reset_game()
+    self.life_lost = False
 
   def goalReached(self, goal):
     goalPosition = self.goalSet[goal]
@@ -111,5 +121,3 @@ class ALEEnvironment():
     if float(count) / ((goalPosition[1][0] - goalPosition[0][0]) * (goalPosition[1][1] - goalPosition[0][1])) > 0.15:
       return True
     return False
-
-
