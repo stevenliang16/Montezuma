@@ -11,11 +11,11 @@ defaultTau = 0.001
 
 defaultAnnealSteps = 50000
 defaultEndEpsilon = 0.1
-defaultRandomPlaySteps = 10000
+defaultRandomPlaySteps = 100000
 
 ############
 defaultMetaEpsilon = 1
-defaultMetaNSamples = 1000
+defaultMetaNSamples = 200
 
 class Agent:
 
@@ -37,14 +37,13 @@ class Agent:
         goalVec = utils.oneHot(goal)
         if self.controllerEpsilon[goal] < random.random():
             # predict action
-            return np.argmax(self.net.controller.predict([state, goalVec], verbose=0))
+            return np.argmax(self.net.controllerNet.predict([np.reshape(state, (1, 84, 84, 1)), np.asarray([goalVec])], verbose=0))
         return random.choice(self.actionSet)
 
     def selectGoal(self, state):
         if self.metaEpsilon < random.random():
             # predict action
-            pred = self.net.meta_controller.predict(state, verbose=0)
-            print("pred shape: " + str(pred.shape))
+            pred = self.net.metaNet.predict(np.reshape(state, (1, 84, 84, 1)), verbose=0)
             return np.argmax(pred)
         print("Exploring")
         return random.choice(self.goalSet)
@@ -55,9 +54,8 @@ class Agent:
     def store(self, experience, meta=False):
         if meta:
             self.metaMemory.append(experience)
-            if len(self.metaMemory) > 1000000:
-                # -100????
-                self.metaMemory = self.metaMemory[-100:]
+            if len(self.metaMemory) > 500:
+                self.metaMemory = self.metaMemory[-500:]
         else:
             self.memory.append(experience)
             if len(self.memory) > 1000000:
@@ -87,7 +85,7 @@ class Agent:
             if not exp.done:
                 rewardVectors[i][exp.action] += self.gamma * max(nextStateRewardVectors[i])
         rewardVectors = np.asarray(rewardVectors)
-        self.net.controllerNet.fit([stateVector, goalVector], rewardVectors, verbose=0)
+        self.net.controllerNet.fit([stateVector, goalVector], rewardVectors, epochs = 1, verbose=1)
         
         #Update target network
         controllerWeights = self.net.controllerNet.get_weights()
@@ -109,7 +107,7 @@ class Agent:
                 rewardVectors[i][np.argmax(exp.goal)] = exp.reward
                 if not exp.done:
                     rewardVectors[i][np.argmax(exp.goal)] += self.gamma * max(nextStateRewardVectors[i])
-            self.net.metaNet.fit(stateVectors, rewardVectors, verbose=0)
+            self.net.metaNet.fit(stateVectors, rewardVectors, epochs = 1, verbose=1)
             
             #Update target network
             metaWeights = self.net.metaNet.get_weights()
@@ -131,3 +129,5 @@ class Agent:
     def annealControllerEpsilon(self, stepCount, goal):
         self.controllerEpsilon[goal] = defaultEndEpsilon + (defaultControllerEpsilon[goal] - defaultEndEpsilon) * \
             (defaultAnnealSteps - max(0, stepCount - defaultRandomPlaySteps)) / defaultAnnealSteps
+
+

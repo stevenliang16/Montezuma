@@ -30,7 +30,7 @@ class ALEEnvironment():
 
     if args.random_seed:
       self.ale.setInt('random_seed', args.random_seed)
-
+    '''
     if args.record_screen_path:
       if not os.path.exists(args.record_screen_path):
         logger.info("Creating folder %s" % args.record_screen_path)
@@ -42,7 +42,7 @@ class ALEEnvironment():
       logger.info("Recording sound to %s", args.record_sound_filename)
       self.ale.setBool('sound', True)
       self.ale.setString('record_sound_filename', args.record_sound_filename)
-
+    '''
     self.ale.loadROM(rom_file)
 
     if args.minimal_action_set:
@@ -87,6 +87,8 @@ class ALEEnvironment():
     lives = self.ale.lives()
     reward = self.ale.act(self.actions[action])
     self.life_lost = (not lives == self.ale.lives())
+    if reward != 0:
+      return 1.0
     return reward
 
   def getScreen(self):
@@ -118,6 +120,8 @@ class ALEEnvironment():
       for x in range (goalPosition[0][1], goalPosition[1][1]):
         if goalScreen[x][y] != stateScreen[x][y]:
           count = count + 1
-    if float(count) / ((goalPosition[1][0] - goalPosition[0][0]) * (goalPosition[1][1] - goalPosition[0][1])) > 0.15:
+    # 30 is total number of pixels of agent
+    if float(count) / ((goalPosition[1][0] - goalPosition[0][0]) * 30) > 0.15:
       return True
     return False
+    

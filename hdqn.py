@@ -1,4 +1,4 @@
-from keras.models import Sequential, Model
+from keras.models import Sequential, Model, load_model
 from keras.layers import Dense, Conv2D, Flatten, Input, concatenate
 
 actionSetSize = 8
@@ -58,8 +58,10 @@ class Hdqn:
         self.targetControllerNet = controllerTarget
         self.targetMetaNet = metaTarget
         
-    def saveWeight(self):
-        return
+    def saveWeight(self, episodeNumber):
+        self.controllerNet.save('controllerNet_' + str(episodeNumber) + '.h5')
+        self.metaNet.save('metaNet_' + str(episodeNumber) + '.h5')
 
     def loadWeight(self):
-        return
+        self.controllerNet.load_model('controllerNet.h5')
+        self.metaNet.load_model('metaNet.h5')

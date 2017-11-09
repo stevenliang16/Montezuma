@@ -1,4 +1,5 @@
 import argparse
+import sys
 from collections import namedtuple
 from environment import ALEEnvironment
 from agent import Agent
@@ -14,13 +15,13 @@ def main():
     stepCount = 0
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", default="montezuma_revenge.bin")
-    # parser.add_argument("--display_screen", action="store_true", default=False)
+    parser.add_argument("--display_screen", action="store_true", default=False)
     parser.add_argument("--frame_skip", default=1)
     #parser.add_argument("--repeat_action_probability", default=0.25)
     parser.add_argument("--color_averaging", default=False)
     parser.add_argument("--random_seed")
-    parser.add_argument("--record_screen_path")
-    parser.add_argument("--record_sound_filename")
+    #parser.add_argument("--record_screen_path", default="./record")
+    #parser.add_argument("--record_sound_filename")
     parser.add_argument("--minimal_action_set", default=False)
     parser.add_argument("--screen_width", default=84)
     parser.add_argument("--screen_height", default=84)
@@ -30,33 +31,34 @@ def main():
     env = ALEEnvironment(args.game, args)
     hdqn = Hdqn()
     agent = Agent(hdqn, range(8), range(6))
-    for episode_thousand in range(12):
-
+    for episode_thousand in range(100):
+        # save the model every 1000 episode
+        hdqn.saveWeight(episode_thousand)
         for episode in range(1000):
             print("\n\n### EPISODE "  + str(episode_thousand*1000 + episode) + "###")
             env.reset()
             goal = agent.selectGoal(env.getState())
-            print "Goal: ", goal
+            print(goal)
+            print(env.isTerminal())
             while not env.isTerminal():
                 totalExternalRewards = 0
                 stateLastGoal = env.getState()
                 while not env.isTerminal() and not env.goalReached(goal):
                     state = env.getState()
                     action = agent.selectMove(state, goal)
-                    # print('selec action is :' + str(actionExplain[action]))
+                    print('selected action is :' + str(actionExplain[action]))
                     externalRewards = env.act(actionMap[action])
-                    # print('reward is :' + str(externalRewards))
+                    print('reward is :' + str(externalRewards))
                     stepCount += 1
                     nextState = env.getState()
                     intrinsicRewards = agent.criticize(env.goalReached(goal))
-
                     # Store transition and update network params
                     exp = ActorExperience(state, goal, action, intrinsicRewards, nextState, env.isTerminal())
                     agent.store(exp, meta=False)
                     # Do not update the network during random play
-                    if (stepCount >= 10000):
-                        if (stepCount == 10000):
-                            print('start training (random walk ends')
+                    if (stepCount >= 100000):
+                        if (stepCount == 100000):
+                            print('start training (random walk ends)')
                         agent.update(meta=False)
                         agent.update(meta=True)
                     totalExternalRewards += externalRewards
