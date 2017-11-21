@@ -63,5 +63,8 @@ class Hdqn:
         self.metaNet.save('metaNet_' + str(episodeNumber) + '.h5')
 
     def loadWeight(self):
-        self.controllerNet.load_model('controllerNet.h5')
-        self.metaNet.load_model('metaNet.h5')
+        path = 'weight/'
+        self.controllerNet = load_model(path + 'controllerNet.h5')
+        self.targetControllerNet = load_model(path + 'controllerNet.h5')
+        self.metaNet = load_model(path + 'metaNet.h5')
+        self.targetMetaNet = load_model(path + 'metaNet.h5')

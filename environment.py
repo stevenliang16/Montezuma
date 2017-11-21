@@ -13,7 +13,7 @@ class ALEEnvironment():
   def __init__(self, rom_file, args):
 
     self.ale = ALEInterface()
-    '''
+    
     if args.display_screen:
       if sys.platform == 'darwin':
         import pygame
@@ -22,8 +22,7 @@ class ALEEnvironment():
       elif sys.platform.startswith('linux'):
         self.ale.setBool('sound', True)
       self.ale.setBool('display_screen', True)
-    self.ale.setBool('display_screen', True)
-    '''
+    
     self.ale.setInt('frame_skip', args.frame_skip)
     #self.ale.setFloat('repeat_action_probability', args.repeat_action_probability)
     self.ale.setBool('color_averaging', args.color_averaging)
@@ -60,12 +59,20 @@ class ALEEnvironment():
     self.life_lost = False
     self.initSrcreen = self.getScreen()
     self.goalSet = []
-    self.goalSet.append([[8, 21], [16, 36]]) # top left door
-    self.goalSet.append([[69, 21], [77, 36]]) # top right door
-    self.goalSet.append([[37, 40], [47, 53]]) # middle ladder
-    self.goalSet.append([[8, 57], [19, 72]]) # lower left ladder
-    self.goalSet.append([[66,57], [76, 72]]) # lower right ladder
-    self.goalSet.append([[6, 39], [12, 47]]) # key
+    self.goalSet.append([[8, 21], [16, 36]]) # top left door 0
+    self.goalSet.append([[69, 21], [77, 36]]) # top right door 1
+    self.goalSet.append([[37, 40], [47, 53]]) # middle ladder 2
+    self.goalSet.append([[8, 57], [19, 72]]) # lower left ladder 3
+    self.goalSet.append([[66,57], [76, 72]]) # lower right ladder 4
+    self.goalSet.append([[6, 39], [12, 47]]) # key 5
+    self.goalCenterLoc = []
+    self.goalCenterLoc.append([(8.0 + 16.0)/2, (21.0 + 36.0)/2])
+    self.goalCenterLoc.append([(69.0 + 77.0)/2, (21.0+36.0)/2])
+    self.goalCenterLoc.append([(37.0 + 47.0)/2, (40.0+53.0)/2])
+    self.goalCenterLoc.append([(8.0 + 19.0)/2, (57.0+72.0)/2])
+    self.goalCenterLoc.append([(66.0 + 76.0)/2, (57.0+72.0)/2])
+    self.goalCenterLoc.append([(6.0 + 12.0)/2, (39.0+47.0)/2])
+    self.reachedGoal = [0, 0, 0, 0, 0, 0]
 
   def numActions(self):
     return len(self.actions)
@@ -82,13 +89,23 @@ class ALEEnvironment():
     ):
       self.ale.reset_game()
     self.life_lost = False
-
+    
+  def resetLife(self):
+    self.life_lost = False
+    
   def act(self, action):
     lives = self.ale.lives()
     reward = self.ale.act(self.actions[action])
     self.life_lost = (not lives == self.ale.lives())
-    if reward != 0:
-      return 1.0
+    return reward
+
+  def actWrapper(self, action):
+    lives = self.ale.lives()
+    reward = self.act(action)
+    for i in range (20):
+      if lives == self.ale.lives():
+        self.ale.act(0)
+    self.life_lost = (not lives == self.ale.lives())
     return reward
 
   def getScreen(self):
@@ -96,6 +113,38 @@ class ALEEnvironment():
     resized = cv2.resize(screen, (self.screen_width, self.screen_height))
     return resized
 
+  def getScreenRGB(self):
+    screen = self.ale.getScreenRGB()
+    resized = cv2.resize(screen, (self.screen_width, self.screen_height))
+    return resized
+
+  def getAgentLoc(self):
+    img = self.getScreenRGB()
+    man = [200, 72, 72]
+    mask = np.zeros(np.shape(img))
+    mask[:,:,0] = man[0];
+    mask[:,:,1] = man[1];
+    mask[:,:,2] = man[2];
+
+    diff = img - mask
+    indxs = np.where(diff == 0)
+    diff[np.where(diff < 0)] = 0
+    diff[np.where(diff > 0)] = 0
+    diff[indxs] = 255
+    mean_y = np.sum(indxs[0]) / np.shape(indxs[0])[0]
+    mean_x = np.sum(indxs[1]) / np.shape(indxs[1])[0]
+    return (mean_x, mean_y)
+
+  def distanceReward(self, lastGoal, goal):
+    if (lastGoal == -1):
+      return 0.0
+    goalCenter = self.goalCenterLoc[goal]
+    agentX, agentY = self.getAgentLoc()
+    lastGoalCenter = self.goalCenterLoc[lastGoal]
+    dis = np.sqrt((goalCenter[0] - agentX)*(goalCenter[0] - agentX) + (goalCenter[1]-agentY)*(goalCenter[1]-agentY))
+    disLast = np.sqrt((lastGoalCenter[0] - agentX)*(lastGoalCenter[0] - agentX) + (lastGoalCenter[1]-agentY)*(lastGoalCenter[1]-agentY))
+    return disLast - dis 
+    
   # add color channel for input of network
   def getState(self):
     screen = self.ale.getScreenGrayscale()
@@ -106,6 +155,12 @@ class ALEEnvironment():
     if self.mode == 'train':
       return self.ale.game_over() or self.life_lost
     return self.ale.game_over()
+
+  def isGameOver(self):
+    return self.ale.game_over()
+
+  def isLifeLost(self):
+    return self.life_lost
 
   def reset(self):
     self.ale.reset_game()
@@ -121,7 +176,13 @@ class ALEEnvironment():
         if goalScreen[x][y] != stateScreen[x][y]:
           count = count + 1
     # 30 is total number of pixels of agent
-    if float(count) / ((goalPosition[1][0] - goalPosition[0][0]) * 30) > 0.15:
+    if float(count) / 30 > 0.5:
+      self.reachedGoal[goal] = 1
       return True
     return False
-    
+
+  def goalNotReachedBefore(self, goal):
+    if (self.reachedGoal[goal] == 1):
+      return False
+    return True
+  
