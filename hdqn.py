@@ -9,7 +9,7 @@ class Hdqn:
     def __init__(self):
         
         # Refer https://keras.io/getting-started/functional-api-guide/ for creating complex non-sequencial net
-        state = Input(shape=(84,84,1))
+        state = Input(shape=(84,84,4))
         goal = Input(shape=(6,))
         xState = Conv2D(32, (8,8), strides = 4, activation = 'relu', padding = 'valid')(state)
         xState = Conv2D(64, (4,4), strides = 2, activation = 'relu', padding = 'valid')(xState)
@@ -23,7 +23,7 @@ class Hdqn:
         
         
         # Target network architecture
-        stateTarget = Input(shape = (84,84,1))
+        stateTarget = Input(shape = (84,84,4))
         goalTarget = Input(shape = (6,))
         xStateTarget = Conv2D(32, (8,8), strides = 4, activation = 'relu', padding = 'valid')(stateTarget)
         xStateTarget = Conv2D(64, (4,4), strides = 2, activation = 'relu', padding = 'valid')(xStateTarget)
@@ -36,7 +36,7 @@ class Hdqn:
         controllerTarget.compile(loss = 'mean_squared_error', optimizer = 'Adam')
         
         meta = Sequential()
-        meta.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 1)))
+        meta.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 4)))
         meta.add(Conv2D(64, (4, 4), strides = 2, activation = 'relu', padding = 'valid'))
         meta.add(Conv2D(64, (3, 3), strides = 1, activation = 'relu', padding = 'valid'))
         meta.add(Flatten())
@@ -45,7 +45,7 @@ class Hdqn:
         meta.compile(loss = 'mean_squared_error', optimizer = 'Adam')
 
         metaTarget = Sequential()
-        metaTarget.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 1)))
+        metaTarget.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 4)))
         metaTarget.add(Conv2D(64, (4, 4), strides = 2, activation = 'relu', padding = 'valid'))
         metaTarget.add(Conv2D(64, (3, 3), strides = 1, activation = 'relu', padding = 'valid'))
         metaTarget.add(Flatten())
@@ -63,5 +63,8 @@ class Hdqn:
         self.metaNet.save('metaNet_' + str(episodeNumber) + '.h5')
 
     def loadWeight(self):
-        self.controllerNet.load_model('controllerNet.h5')
-        self.metaNet.load_model('metaNet.h5')
+        path = 'weight/'
+        self.controllerNet = load_model(path + 'controllerNet.h5')
+        self.targetControllerNet = load_model(path + 'controllerNet.h5')
+        self.metaNet = load_model(path + 'metaNet.h5')
+        self.targetMetaNet = load_model(path + 'metaNet.h5')
