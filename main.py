@@ -19,10 +19,10 @@ def main():
     # Initilization for tensor board
     session = tf.Session()
     tensorVar = tf.Variable(0)
-    tensorVarMiddle = tf.Variable(0)
-    tensorVarLowerRight = tf.Variable(0)
-    tensorVarLowerLeft = tf.Variable(0)
-    tensorVarKey = tf.Variable(0)
+    tensorVarMiddle = tf.Variable(0, dtype = "float32")
+    tensorVarLowerRight = tf.Variable(0, dtype = "float32")
+    tensorVarLowerLeft = tf.Variable(0, dtype = "float32")
+    tensorVarKey = tf.Variable(0, dtype = "float32")
     tf.summary.scalar("reward", tensorVar)
     tf.summary.scalar("middle ladder", tensorVarMiddle)
     tf.summary.scalar("lower right ladder", tensorVarLowerRight)
@@ -30,10 +30,10 @@ def main():
     tf.summary.scalar("key", tensorVarKey)
     sumWriterIntrinsic = tf.summary.FileWriter('./reward/intrinsic')
     sumWriterExternal = tf.summary.FileWriter('./reward/external')
-    sumWriterMiddle = tf.summary.FileWriter('./middleLadder')
-    sumWriterLowerRight = tf.summary.FileWriter('./lowerRightLadder')
-    sumWriterLowerLeft = tf.summary.FileWriter('./lowerLeftLadder')
-    sumWriterKey = tf.summary.FileWriter('./key')
+    sumWriterMiddle = tf.summary.FileWriter('./reward/middleLadder')
+    sumWriterLowerRight = tf.summary.FileWriter('./reward/lowerRightLadder')
+    sumWriterLowerLeft = tf.summary.FileWriter('./reward/lowerLeftLadder')
+    sumWriterKey = tf.summary.FileWriter('./reward/key')
     merged = tf.summary.merge_all()
     session.run(tf.initialize_all_variables())
 
@@ -93,7 +93,7 @@ def main():
             # goal = agent.selectGoal(env.getState())
             goal = agent.selectTrueGoal(goalNum)
             goalAttemptCount[goal] += 1
-            #print('predicted subgoal is: ' + goalExplain[goal])
+            print('predicted subgoal is: ' + goalExplain[goal])
             while not env.isTerminal() and not env.goalReached(goal) and episodeSteps <= maxStepsPerEpisode:
                 state = env.getStackedState()
                 action = agent.selectMove(state, goal)
