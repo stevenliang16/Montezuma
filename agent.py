@@ -2,14 +2,16 @@ import random
 import numpy as np
 import utils
 
+from memory import Memory
+
 # Default architectures for the lower level controller/actor
 defaultNSample = 256
 defaultGamma = 0.99
 defaultEpsilon = 1.0
-defaultControllerEpsilon = [1.0]*6
+defaultControllerEpsilon = [1.0]*4
 defaultTau = 0.001
 
-defaultAnnealSteps = 500000
+defaultAnnealSteps = 600000
 defaultEndEpsilon = 0.1
 defaultRandomPlaySteps = 100000
 
@@ -17,9 +19,10 @@ defaultRandomPlaySteps = 100000
 defaultMetaEpsilon = 1
 defaultMetaNSamples = 256
 controllerMemCap = 1000000
+metaMemCap = 50000
 maxReward = 1
 minReward = -1
-trueSubgoalOrder = [2, 4, 3, 5]
+trueSubgoalOrder = [0, 1, 2, 3]
 
 class Agent:
 
@@ -34,8 +37,8 @@ class Agent:
         self.gamma = defaultGamma
         self.targetTau = tau
         self.net = net
-        self.memory = []
-        self.metaMemory = []
+        self.memory = Memory(controllerMemCap)
+        self.metaMemory = Memory(metaMemCap)
 
     def selectMove(self, state, goal):
         goalVec = utils.oneHot(goal)
@@ -64,49 +67,52 @@ class Agent:
         reward = 0.0
         if reachGoal:
             reward += 50.0
+        # if die:
+        #     reward -= 200.0
         if not useSparseReward:
-            if action == 0:
-                reward -= 0.1
-            if die:
-                reward -= 200.0
-            # reward += distanceReward
+            # if action == 0:
+            #     reward -= 0.1
+            reward += distanceReward
         reward = np.minimum(reward, maxReward)
         reward = np.maximum(reward, minReward)
         return reward
 
     def store(self, experience, meta=False):
         if meta:
-            self.metaMemory.append(experience)
-            if len(self.metaMemory) > 50000:
-                self.metaMemory = self.metaMemory[-50000:]
+            self.metaMemory.add(np.abs(experience.reward), experience)
         else:
-            self.memory.append(experience)
-            if len(self.memory) > controllerMemCap:
-                self.memory = self.memory[-controllerMemCap:]
+            self.memory.add(np.abs(experience.reward), experience)
 
     
     def _update(self, stepCount):
-        exps = [random.choice(self.memory) for _ in range(self.nSamples)]
+        #exps = [random.choice(self.memory) for _ in range(self.nSamples)]
+        batches = self.memory.sample(self.nSamples)
         # stateVectors = np.squeeze(np.asarray([np.concatenate([exp.state, exp.goal], axis=1) for exp in exps]))
         stateVector = []
         goalVector = []
-        for exp in exps:
+        for batch in batches:
+            exp = batch[1]
             stateVector.append(exp.state)
             goalVector.append(utils.oneHot(exp.goal))
         stateVector = np.asarray(stateVector)
         goalVector = np.asarray(goalVector)
         # nextStateVectors = np.squeeze(np.asarray([np.concatenate([exp.next_state, exp.goal], axis=1) for exp in exps]))
         nextStateVector = []
-        for exp in exps:
+        for batch in batches:
+            exp = batch[1]
             nextStateVector.append(exp.next_state)
         nextStateVector = np.asarray(nextStateVector)
         rewardVectors = self.net.controllerNet.predict([stateVector, goalVector], verbose=0)
+        rewardVectorsCopy = np.copy(rewardVectors)
         nextStateRewardVectors = self.net.targetControllerNet.predict([nextStateVector, goalVector], verbose=0)
 
-        for i, exp in enumerate(exps):
+        for i, batch in enumerate(batches):
+            exp = batch[1]
+            idx = batch[0]
             rewardVectors[i][exp.action] = exp.reward
             if not exp.done:
                 rewardVectors[i][exp.action] += self.gamma * max(nextStateRewardVectors[i])
+            self.memory.update(idx, np.abs(rewardVectors[i][exp.action] - rewardVectorsCopy[i][exp.action]))
         rewardVectors = np.asarray(rewardVectors)
         self.net.controllerNet.train_on_batch([stateVector, goalVector], rewardVectors)
         
@@ -119,17 +125,22 @@ class Agent:
 
     def _update_meta(self, stepCount):
         if 0 < len(self.metaMemory):
-            exps = [random.choice(self.metaMemory) for _ in range(self.metaNSamples)]
-            stateVectors = np.asarray([exp.state for exp in exps])
-            nextStateVectors = np.asarray([exp.next_state for exp in exps])
+            batches = self.metaMemory.sample(self.metaNSamples)
+            #exps = [random.choice(self.metaMemory) for _ in range(self.metaNSamples)]
+            stateVectors = np.asarray([batch[1].state for batch in batches])
+            nextStateVectors = np.asarray([batch[1].next_state for batch in batches])
             
             rewardVectors = self.net.metaNet.predict(stateVectors, verbose=0)
+            rewardVectorsCopy = np.copy(rewardVectors)
             nextStateRewardVectors = self.net.targetMetaNet.predict(nextStateVectors, verbose=0)
 
-            for i, exp in enumerate(exps):
+            for i, batch in enumerate(batches):
+                exp = batch[1]
+                idx = batch[0]
                 rewardVectors[i][np.argmax(exp.goal)] = exp.reward
                 if not exp.done:
                     rewardVectors[i][np.argmax(exp.goal)] += self.gamma * max(nextStateRewardVectors[i])
+                self.metaMemory.update(idx, np.abs(rewardVectors[i][exp.goal] - rewardVectorsCopy[i][exp.goal]))
             self.net.metaNet.train_on_batch(stateVectors, rewardVectors)
             
             #Update target network
@@ -152,4 +163,3 @@ class Agent:
     def annealControllerEpsilon(self, stepCount, goal):
         self.controllerEpsilon[goal] = defaultEndEpsilon + max(0, (defaultControllerEpsilon[goal] - defaultEndEpsilon) * \
             (defaultAnnealSteps - max(0, stepCount - defaultRandomPlaySteps)) / defaultAnnealSteps)
-

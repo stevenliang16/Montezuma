@@ -3,6 +3,8 @@ import os
 import logging
 import cv2
 import numpy as np
+from hdqn import Hdqn
+from PIL import Image
 from ale_python_interface import ALEInterface
 
 logger = logging.getLogger(__name__)
@@ -60,23 +62,25 @@ class ALEEnvironment():
     self.life_lost = False
     self.initSrcreen = self.getScreen()
     self.goalSet = []
-    self.goalSet.append([[8, 21], [16, 36]]) # top left door 0
-    self.goalSet.append([[69, 21], [77, 36]]) # top right door 1
+    # self.goalSet.append([[8, 21], [16, 36]]) # top left door 0
+    # self.goalSet.append([[69, 21], [77, 36]]) # top right door 1
     # self.goalSet.append([[37, 40], [47, 53]]) # middle ladder 2
-    self.goalSet.append([[40, 49],[45, 54]]) # middle ladder bottom 2
-    self.goalSet.append([[8, 57], [19, 72]]) # lower left ladder 3
-    self.goalSet.append([[66,57], [76, 72]]) # lower right ladder 4
-    self.goalSet.append([[6, 39], [12, 47]]) # key 5
+    self.goalSet.append([[41, 49],[44, 53]]) # middle ladder bottom 2
+    self.goalSet.append([[70, 58], [74, 66]]) # lower right ladder 4
+    self.goalSet.append([[11, 58], [15, 66]]) # lower left ladder 3
+    self.goalSet.append([[7, 41], [11, 45]]) # key 5
     self.goalCenterLoc = []
-    self.goalCenterLoc.append([(8.0 + 16.0)/2, (21.0 + 36.0)/2])
-    self.goalCenterLoc.append([(69.0 + 77.0)/2, (21.0+36.0)/2])
+    # self.goalCenterLoc.append([(8.0 + 16.0)/2, (21.0 + 36.0)/2])
+    # self.goalCenterLoc.append([(69.0 + 77.0)/2, (21.0+36.0)/2])
     # self.goalCenterLoc.append([(37.0 + 47.0)/2, (40.0+53.0)/2])
     self.goalCenterLoc.append([(40.0 + 45.0)/2, (49.0+54.0)/2])
-    self.goalCenterLoc.append([(8.0 + 19.0)/2, (57.0+72.0)/2])
     self.goalCenterLoc.append([(66.0 + 76.0)/2, (57.0+72.0)/2])
+    self.goalCenterLoc.append([(8.0 + 19.0)/2, (57.0+72.0)/2])
     self.goalCenterLoc.append([(6.0 + 12.0)/2, (39.0+47.0)/2])
-    self.angetOriginLoc = [33, 42]
-    self.reachedGoal = [0, 0, 0, 0, 0, 0]
+    self.agentOriginLoc = [42, 33]
+    self.agentLastX = 42
+    self.agentLastY = 33
+    self.reachedGoal = [0, 0, 0, 0]
     self.histState = [self.getState(), self.getState(), self.getState(), self.getState()]
     self.histStateInitial = list(self.histState)
 
@@ -95,15 +99,20 @@ class ALEEnvironment():
     ):
       self.ale.reset_game()
     self.life_lost = False
-    for i in range(20):
+    for i in range(19):
       self.act(0) #wait for initialization
     self.histState = [self.getState(), self.getState(), self.getState(), self.getState()]
+    self.agentLastX = self.agentOriginLoc[0]
+    self.agentLastY = self.agentOriginLoc[1]
+
     
   def beginNextLife(self):
     self.life_lost = False
-    for i in range(20):
+    for i in range(19):
       self.act(0) #wait for initialization
     self.histState = [self.getState(), self.getState(), self.getState(), self.getState()]
+    self.agentLastX = self.agentOriginLoc[0]
+    self.agentLastY = self.agentOriginLoc[1]
     
   def act(self, action):
     lives = self.ale.lives()
@@ -118,8 +127,8 @@ class ALEEnvironment():
 
   def getScreenRGB(self):
     screen = self.ale.getScreenRGB()
-    # resized = cv2.resize(screen, (self.screen_width, self.screen_height))
-    resized = screen
+    resized = cv2.resize(screen, (self.screen_width, self.screen_height))
+    #resized = screen
     return resized
 
   def getAgentLoc(self):
@@ -135,16 +144,19 @@ class ALEEnvironment():
     diff[np.where(diff < 0)] = 0
     diff[np.where(diff > 0)] = 0
     diff[indxs] = 255
-    # if (np.shape(indxs[0])[0] == 0):
-    #   print indxs
-    #   sys.exit()
-    mean_y = np.sum(indxs[0]) / np.shape(indxs[0])[0]
-    mean_x = np.sum(indxs[1]) / np.shape(indxs[1])[0]
+    if (np.shape(indxs[0])[0] == 0):
+      mean_x = self.agentLastX
+      mean_y = self.agentLastY
+    else:
+      mean_y = np.sum(indxs[0]) / np.shape(indxs[0])[0]
+      mean_x = np.sum(indxs[1]) / np.shape(indxs[1])[0]
+    self.agentLastX = mean_x
+    self.agentLastY = mean_y
     return (mean_x, mean_y)
 
   def distanceReward(self, lastGoal, goal):
     if (lastGoal == -1):
-      lastGoalCenter = self.angetOriginLoc
+      lastGoalCenter = self.agentOriginLoc
       # goalCenter = self.goalCenterLoc[goal]
       # agentX, agentY = self.getAgentLoc()
       # dis = np.sqrt((goalCenter[0] - agentX)*(goalCenter[0] - agentX) + (goalCenter[1]-agentY)*(goalCenter[1]-agentY)) 
@@ -157,7 +169,7 @@ class ALEEnvironment():
     dis = np.sqrt((goalCenter[0] - agentX)*(goalCenter[0] - agentX) + (goalCenter[1]-agentY)*(goalCenter[1]-agentY))
     disLast = np.sqrt((lastGoalCenter[0] - agentX)*(lastGoalCenter[0] - agentX) + (lastGoalCenter[1]-agentY)*(lastGoalCenter[1]-agentY))
     disGoals = np.sqrt((goalCenter[0]-lastGoalCenter[0])*(goalCenter[0]-lastGoalCenter[0]) + (goalCenter[1]-lastGoalCenter[1])*(goalCenter[1]-lastGoalCenter[1]))
-    return 1.0 * (disLast - dis) / disGoals
+    return 0.001 * (disLast - dis) / disGoals
     
   # add color channel for input of network
   def getState(self):
@@ -196,7 +208,7 @@ class ALEEnvironment():
         if goalScreen[x][y] != stateScreen[x][y]:
           count = count + 1
     # 30 is total number of pixels of agent
-    if float(count) / 30 > 0.5:
+    if float(count) / 30 > 0.3:
       self.reachedGoal[goal] = 1
       return True
     return False
@@ -205,4 +217,20 @@ class ALEEnvironment():
     if (self.reachedGoal[goal] == 1):
       return False
     return True
+
+  # Debugging
+  '''
+  def plot(self):
+    print self.getAgentLoc()
+    im = self.getScreen()
+    for goalCenter in self.goalCenterLoc:
+      for x in range (int(goalCenter[0])-2, int(goalCenter[0])+2):
+        for y in range (int(goalCenter[1])-2, int(goalCenter[1])+2):
+          im[y][x] = 255
+    for x in range (self.agentOriginLoc[0]-2, self.agentOriginLoc[0]+2):
+      for y in range (self.agentOriginLoc[1]-2, self.agentOriginLoc[1]+2):
+        im[y][x] = 255
+    Image.fromarray(im).save('goalLocMarked.jpeg')
+  '''
+
   

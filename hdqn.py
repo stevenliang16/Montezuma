@@ -2,7 +2,7 @@ from keras.models import Sequential, Model, load_model
 from keras.layers import Dense, Conv2D, Flatten, Input, concatenate
 
 actionSetSize = 8
-goalSetSize = 6
+goalSetSize = 4
 
 class Hdqn:
     
@@ -10,7 +10,7 @@ class Hdqn:
         
         # Refer https://keras.io/getting-started/functional-api-guide/ for creating complex non-sequencial net
         state = Input(shape=(84,84,4))
-        goal = Input(shape=(6,))
+        goal = Input(shape=(4,))
         xState = Conv2D(32, (8,8), strides = 4, activation = 'relu', padding = 'valid')(state)
         xState = Conv2D(64, (4,4), strides = 2, activation = 'relu', padding = 'valid')(xState)
         xState = Conv2D(64, (3,3), strides = 1, activation = 'relu', padding = 'valid')(xState)
@@ -19,12 +19,12 @@ class Hdqn:
         mergedSignal = Dense(512, activation = 'relu')(mergedSignal)
         outputAction = Dense(actionSetSize, activation = 'relu')(mergedSignal)
         controller = Model(inputs=[state, goal], outputs=outputAction)
-        controller.compile(loss = 'mean_squared_error', optimizer = 'Adam')
+        controller.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
         
         
         # Target network architecture
         stateTarget = Input(shape = (84,84,4))
-        goalTarget = Input(shape = (6,))
+        goalTarget = Input(shape = (4,))
         xStateTarget = Conv2D(32, (8,8), strides = 4, activation = 'relu', padding = 'valid')(stateTarget)
         xStateTarget = Conv2D(64, (4,4), strides = 2, activation = 'relu', padding = 'valid')(xStateTarget)
         xStateTarget = Conv2D(64, (3,3), strides = 1, activation = 'relu', padding = 'valid')(xStateTarget)
@@ -33,7 +33,7 @@ class Hdqn:
         mergedSignalTarget = Dense(512, activation = 'relu')(mergedSignalTarget)
         outputActionTarget = Dense(actionSetSize, activation = 'relu')(mergedSignalTarget)
         controllerTarget = Model(inputs=[stateTarget, goalTarget], outputs=outputActionTarget)
-        controllerTarget.compile(loss = 'mean_squared_error', optimizer = 'Adam')
+        controllerTarget.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
         
         meta = Sequential()
         meta.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 4)))
@@ -42,7 +42,7 @@ class Hdqn:
         meta.add(Flatten())
         meta.add(Dense(512, activation = 'relu'))
         meta.add(Dense(goalSetSize, activation = 'relu')) # Total number of actions = 18 ?????
-        meta.compile(loss = 'mean_squared_error', optimizer = 'Adam')
+        meta.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
 
         metaTarget = Sequential()
         metaTarget.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 4)))
@@ -51,16 +51,16 @@ class Hdqn:
         metaTarget.add(Flatten())
         metaTarget.add(Dense(512, activation = 'relu'))
         metaTarget.add(Dense(goalSetSize, activation = 'relu')) # Total number of actions = 18 ?????
-        metaTarget.compile(loss = 'mean_squared_error', optimizer = 'Adam')
+        metaTarget.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
         
         self.controllerNet = controller
         self.metaNet = meta
         self.targetControllerNet = controllerTarget
         self.targetMetaNet = metaTarget
         
-    def saveWeight(self, episodeNumber):
-        self.controllerNet.save('controllerNet_' + str(episodeNumber) + '.h5')
-        self.metaNet.save('metaNet_' + str(episodeNumber) + '.h5')
+    def saveWeight(self, stepCount):
+        self.controllerNet.save('controllerNet_' + str(stepCount) + '.h5')
+        self.metaNet.save('metaNet_' + str(stepCount) + '.h5')
 
     def loadWeight(self):
         path = 'weight/'
