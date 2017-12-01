@@ -3,7 +3,7 @@ import sys
 import time
 import numpy as np
 import tensorflow as tf
-from collections import namedtuple
+from collections import namedtuple, deque
 from environment import ALEEnvironment
 from agent import Agent
 from hdqn import Hdqn
@@ -41,8 +41,8 @@ def main():
     actionExplain = ['no action', 'jump', 'up', 'right', 'left', 'down', 'jump right', 'jump left']
     goalExplain = ['middle ladder', 'lower right ladder', 'lower left ladder', 'key']
     stepCount = 0
-    goalReachCount = [0, 0, 0, 0]
-    goalAttemptCount = [0.1, 0.1, 0.1, 0.1]
+    goalSuccessTrack = [deque(), deque(), deque(), deque(), deque(), deque()] # deque in python is linkedlist, list is actually an array
+    goalSuccessCount = [0, 0, 0, 0, 0, 0]
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", default="montezuma_revenge.bin")
     parser.add_argument("--display_screen", type=str2bool, default=False)
@@ -85,14 +85,16 @@ def main():
         env.restart()
         episodeSteps = 0
         # set goalNum to hardcoded subgoal
-        goalNum = 0
         lastGoal = -1
         while not env.isGameOver() and episodeSteps <= maxStepsPerEpisode:
             totalExternalRewards = 0 # NOT SURE IF IT SHOULD BE CLEARED HERE!
             stateLastGoal = env.getStackedState()
             # goal = agent.selectGoal(env.getState())
-            goal = agent.selectTrueGoal(goalNum)
-            goalAttemptCount[goal] += 1
+            # goal = agent.selectTrueGoal(goalNum)
+            goal = 1
+            if (len(goalSuccessTrack[goal]) > 100):
+                firstElement = goalSuccessTrack[goal].popleft()
+                goalSuccessCount[goal] -= firstElement
             print('predicted subgoal is: ' + goalExplain[goal])
             while not env.isTerminal() and not env.goalReached(goal) and episodeSteps <= maxStepsPerEpisode:
                 state = env.getStackedState()
@@ -145,19 +147,12 @@ def main():
             
             # Update goal
             if episodeSteps > maxStepsPerEpisode:
+                goalSuccessTrack[goal].append(0)
                 break
             elif env.goalReached(goal):
-                lastGoal = goal
-                goalReachCount[goal] += 1
+                goalSuccessTrack[goal].append(1)
+                goalSuccessCount[goal] += 1
                 print('goal reached: ' + goalExplain[goal])
-                '''
-                if (goal == 2):
-                    im = Image.fromarray(np.squeeze(env.getState()))
-                    im.save(str(goalReachCount[goal])+'reachedLeftLadder.jpeg')
-                '''
-                goalNum = goalNum + 1
-                if goalNum >= 4:
-                   break
                 # Training Visualization
                 intrinsicPlot = session.run(merged, feed_dict={tensorVar: intrinsicRewardMonitor})
                 sumWriterIntrinsic.add_summary(intrinsicPlot, stepCount)
@@ -165,21 +160,21 @@ def main():
                 externalPlot = session.run(merged, feed_dict={tensorVar: externalRewardMonitor})
                 sumWriterExternal.add_summary(externalPlot, stepCount)
                 sumWriterExternal.flush()
-                middlePlot = session.run(merged, feed_dict={tensorVarMiddle: float(goalReachCount[0])/goalAttemptCount[0]})
-                sumWriterMiddle.add_summary(middlePlot, stepCount)
+                middlePlot = session.run(merged, feed_dict={tensorVarMiddle: float(goalSuccessCount[0])/(0.1+len(goalSuccessTrack[0]))})
                 sumWriterMiddle.flush()
-                lowerRightPlot = session.run(merged, feed_dict={tensorVarLowerRight: float(goalReachCount[1])/goalAttemptCount[1]})
+                lowerRightPlot = session.run(merged, feed_dict={tensorVarLowerRight: float(goalSuccessCount[1])/(0.1+len(goalSuccessTrack[1]))})
                 sumWriterLowerRight.add_summary(lowerRightPlot, stepCount)
                 sumWriterLowerRight.flush()
-                lowerLeftPlot = session.run(merged, feed_dict={tensorVarLowerLeft: float(goalReachCount[2])/goalAttemptCount[2]})
+                lowerLeftPlot = session.run(merged, feed_dict={tensorVarLowerLeft: float(goalSuccessCount[2])/(0.1+len(goalSuccessTrack[2]))})
                 sumWriterLowerLeft.add_summary(lowerLeftPlot, stepCount)
                 sumWriterLowerLeft.flush()
-                keyPlot = session.run(merged, feed_dict={tensorVarKey: float(goalReachCount[3])/goalAttemptCount[3]})
+                keyPlot = session.run(merged, feed_dict={tensorVarKey: float(goalSuccessCount[3])/(0.1+len(goalSuccessTrack[3]))})
                 sumWriterKey.add_summary(keyPlot, stepCount)
                 sumWriterKey.flush()
+                break
             else:
+                goalSuccessTrack[goal].append(0)
                 if not env.isGameOver():
-                    goalNum = 0
                     lastGoal = -1
                     env.beginNextLife()
                                

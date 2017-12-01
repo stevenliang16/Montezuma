@@ -1,6 +1,6 @@
 from keras.models import Sequential, Model, load_model
 from keras.layers import Dense, Conv2D, Flatten, Input, concatenate
-
+from keras import optimizers
 actionSetSize = 8
 goalSetSize = 4
 
@@ -19,7 +19,8 @@ class Hdqn:
         mergedSignal = Dense(512, activation = 'relu')(mergedSignal)
         outputAction = Dense(actionSetSize, activation = 'relu')(mergedSignal)
         controller = Model(inputs=[state, goal], outputs=outputAction)
-        controller.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
+        rmsProp = optimizers.RMSprop(lr=0.00025, rho=0.95, epsilon=1e-08, decay=0.0)
+        controller.compile(loss = 'mean_squared_error', optimizer = rmsProp)
         
         
         # Target network architecture
@@ -33,7 +34,8 @@ class Hdqn:
         mergedSignalTarget = Dense(512, activation = 'relu')(mergedSignalTarget)
         outputActionTarget = Dense(actionSetSize, activation = 'relu')(mergedSignalTarget)
         controllerTarget = Model(inputs=[stateTarget, goalTarget], outputs=outputActionTarget)
-        controllerTarget.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
+        rmsProp = optimizers.RMSprop(lr=0.00025, rho=0.95, epsilon=1e-08, decay=0.0)
+        controllerTarget.compile(loss = 'mean_squared_error', optimizer = rmsProp)
         
         meta = Sequential()
         meta.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 4)))
@@ -42,7 +44,8 @@ class Hdqn:
         meta.add(Flatten())
         meta.add(Dense(512, activation = 'relu'))
         meta.add(Dense(goalSetSize, activation = 'relu')) # Total number of actions = 18 ?????
-        meta.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
+        rmsProp = optimizers.RMSprop(lr=0.00025, rho=0.95, epsilon=1e-08, decay=0.0)
+        meta.compile(loss = 'mean_squared_error', optimizer = rmsProp)
 
         metaTarget = Sequential()
         metaTarget.add(Conv2D(32, (8, 8), strides = 4, activation = 'relu', padding = 'valid', input_shape = (84, 84, 4)))
@@ -51,7 +54,8 @@ class Hdqn:
         metaTarget.add(Flatten())
         metaTarget.add(Dense(512, activation = 'relu'))
         metaTarget.add(Dense(goalSetSize, activation = 'relu')) # Total number of actions = 18 ?????
-        metaTarget.compile(loss = 'mean_squared_error', optimizer = 'Adadelta')
+        rmsProp = optimizers.RMSprop(lr=0.00025, rho=0.95, epsilon=1e-08, decay=0.0)
+        metaTarget.compile(loss = 'mean_squared_error', optimizer = rmsProp)
         
         self.controllerNet = controller
         self.metaNet = meta

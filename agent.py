@@ -11,7 +11,7 @@ defaultEpsilon = 1.0
 defaultControllerEpsilon = [1.0]*4
 defaultTau = 0.001
 
-defaultAnnealSteps = 600000
+defaultAnnealSteps = 150000
 defaultEndEpsilon = 0.1
 defaultRandomPlaySteps = 100000
 
@@ -75,6 +75,7 @@ class Agent:
             reward += distanceReward
         reward = np.minimum(reward, maxReward)
         reward = np.maximum(reward, minReward)
+        print reward
         return reward
 
     def store(self, experience, meta=False):
