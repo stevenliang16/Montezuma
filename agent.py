@@ -11,7 +11,7 @@ defaultEpsilon = 1.0
 defaultControllerEpsilon = [1.0]*4
 defaultTau = 0.001
 
-defaultAnnealSteps = 150000
+defaultAnnealSteps = 500000
 defaultEndEpsilon = 0.1
 defaultRandomPlaySteps = 100000
 
@@ -23,6 +23,7 @@ metaMemCap = 50000
 maxReward = 1
 minReward = -1
 trueSubgoalOrder = [0, 1, 2, 3]
+hardUpdateFrequency = 10000 * 4
 
 class Agent:
 
@@ -75,7 +76,6 @@ class Agent:
             reward += distanceReward
         reward = np.minimum(reward, maxReward)
         reward = np.maximum(reward, minReward)
-        print reward
         return reward
 
     def store(self, experience, meta=False):
@@ -115,14 +115,22 @@ class Agent:
                 rewardVectors[i][exp.action] += self.gamma * max(nextStateRewardVectors[i])
             self.memory.update(idx, np.abs(rewardVectors[i][exp.action] - rewardVectorsCopy[i][exp.action]))
         rewardVectors = np.asarray(rewardVectors)
-        self.net.controllerNet.train_on_batch([stateVector, goalVector], rewardVectors)
+        loss = self.net.controllerNet.train_on_batch([stateVector, goalVector], rewardVectors)
         
         #Update target network
+        # if (stepCount % hardUpdateFrequency == 1):
+        #     controllerWeights = self.net.controllerNet.get_weights()
+        #     controllerTargetWeights = self.net.targetControllerNet.get_weights()
+        #     for i in range(len(controllerWeights)):
+        #         controllerTargetWeights[i] = np.copy(controllerWeights[i])
+        #     self.net.targetControllerNet.set_weights(controllerTargetWeights)
         controllerWeights = self.net.controllerNet.get_weights()
         controllerTargetWeights = self.net.targetControllerNet.get_weights()
         for i in range(len(controllerWeights)):
-            controllerTargetWeights[i] = self.targetTau * controllerWeights[i] + (1 - self.targetTau) * controllerTargetWeights[i]
+            controllerTargetWeights[i] = self.targetTau * np.copy(controllerWeights[i]) + (1 - self.targetTau) * controllerTargetWeights[i]
         self.net.targetControllerNet.set_weights(controllerTargetWeights)
+        return loss
+        
 
     def _update_meta(self, stepCount):
         if 0 < len(self.metaMemory):
@@ -142,20 +150,26 @@ class Agent:
                 if not exp.done:
                     rewardVectors[i][np.argmax(exp.goal)] += self.gamma * max(nextStateRewardVectors[i])
                 self.metaMemory.update(idx, np.abs(rewardVectors[i][exp.goal] - rewardVectorsCopy[i][exp.goal]))
-            self.net.metaNet.train_on_batch(stateVectors, rewardVectors)
+            loss = self.net.metaNet.train_on_batch(stateVectors, rewardVectors)
             
             #Update target network
+            # metaWeights = self.net.metaNet.get_weights()
+            # metaTargetWeights = self.net.targetMetaNet.get_weights()
+            # for i in range(len(metaWeights)):
+            #     metaTargetWeights[i] = np.copy(metaWeights[i])
+            # self.net.targetMetaNet.set_weights(metaTargetWeights)
             metaWeights = self.net.metaNet.get_weights()
             metaTargetWeights = self.net.targetMetaNet.get_weights()
             for i in range(len(metaWeights)):
-                metaTargetWeights[i] = self.targetTau * metaWeights[i] + (1 - self.targetTau) * metaTargetWeights[i]
+                metaTargetWeights[i] = self.targetTau * np.copy(metaWeights[i]) + (1 - self.targetTau) * metaTargetWeights[i]
             self.net.targetMetaNet.set_weights(metaTargetWeights)
-
+            return loss
     def update(self, stepCount, meta=False):
         if meta:
-            self._update_meta(stepCount)
+            loss = self._update_meta(stepCount)
         else:
-            self._update(stepCount)
+            loss = self._update(stepCount)
+        return loss
 
     def annealMetaEpsilon(self, stepCount):
         self.metaEpsilon = defaultEndEpsilon + max(0, (defaultMetaEpsilon - defaultEndEpsilon) * \

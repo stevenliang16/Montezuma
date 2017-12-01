@@ -19,16 +19,20 @@ def main():
     # Initilization for tensor board
     session = tf.Session()
     tensorVar = tf.Variable(0)
+    tensorVarLoss = tf.Variable(0, dtype = "float32")
     tensorVarMiddle = tf.Variable(0, dtype = "float32")
     tensorVarLowerRight = tf.Variable(0, dtype = "float32")
     tensorVarLowerLeft = tf.Variable(0, dtype = "float32")
     tensorVarKey = tf.Variable(0, dtype = "float32")
+    
     tf.summary.scalar("reward", tensorVar)
+    tf.summary.scalar("loss", tensorVarLoss)
     tf.summary.scalar("middle ladder", tensorVarMiddle)
     tf.summary.scalar("lower right ladder", tensorVarLowerRight)
     tf.summary.scalar("lower left ladder", tensorVarLowerLeft)
     tf.summary.scalar("key", tensorVarKey)
     sumWriterIntrinsic = tf.summary.FileWriter('./reward/intrinsic')
+    sumWriterLoss = tf.summary.FileWriter('./reward/loss')
     sumWriterExternal = tf.summary.FileWriter('./reward/external')
     sumWriterMiddle = tf.summary.FileWriter('./reward/middleLadder')
     sumWriterLowerRight = tf.summary.FileWriter('./reward/lowerRightLadder')
@@ -85,17 +89,19 @@ def main():
         env.restart()
         episodeSteps = 0
         # set goalNum to hardcoded subgoal
+        goalNum = 0
         lastGoal = -1
         while not env.isGameOver() and episodeSteps <= maxStepsPerEpisode:
             totalExternalRewards = 0 # NOT SURE IF IT SHOULD BE CLEARED HERE!
             stateLastGoal = env.getStackedState()
+            # nextState = stateLastGoal
             # goal = agent.selectGoal(env.getState())
-            # goal = agent.selectTrueGoal(goalNum)
-            goal = 1
+            goal = agent.selectTrueGoal(goalNum)
+            #goal = 1
             if (len(goalSuccessTrack[goal]) > 100):
                 firstElement = goalSuccessTrack[goal].popleft()
                 goalSuccessCount[goal] -= firstElement
-            print('predicted subgoal is: ' + goalExplain[goal])
+            # print('predicted subgoal is: ' + goalExplain[goal])
             while not env.isTerminal() and not env.goalReached(goal) and episodeSteps <= maxStepsPerEpisode:
                 state = env.getStackedState()
                 action = agent.selectMove(state, goal)
@@ -131,8 +137,12 @@ def main():
                     if (stepCount == defaultRandomPlaySteps):
                         print('start training (random walk ends)')
                     if (stepCount % 4 == 0):
-                        agent.update(stepCount, meta=False)
+                        loss = agent.update(stepCount, meta=False)
                         # agent.update(stepCount, meta=True)
+                        # Loss visualization
+                        lossPlot = session.run(merged, feed_dict={tensorVarLoss: loss})
+                        sumWriterLoss.add_summary(lossPlot, stepCount)
+                        sumWriterLoss.flush()
                 
                 # Update external reward for D2
                 totalExternalRewards += externalRewards
@@ -161,6 +171,7 @@ def main():
                 sumWriterExternal.add_summary(externalPlot, stepCount)
                 sumWriterExternal.flush()
                 middlePlot = session.run(merged, feed_dict={tensorVarMiddle: float(goalSuccessCount[0])/(0.1+len(goalSuccessTrack[0]))})
+                sumWriterMiddle.add_summary(middlePlot, stepCount)
                 sumWriterMiddle.flush()
                 lowerRightPlot = session.run(merged, feed_dict={tensorVarLowerRight: float(goalSuccessCount[1])/(0.1+len(goalSuccessTrack[1]))})
                 sumWriterLowerRight.add_summary(lowerRightPlot, stepCount)
@@ -171,11 +182,16 @@ def main():
                 keyPlot = session.run(merged, feed_dict={tensorVarKey: float(goalSuccessCount[3])/(0.1+len(goalSuccessTrack[3]))})
                 sumWriterKey.add_summary(keyPlot, stepCount)
                 sumWriterKey.flush()
-                break
+
+                lastGoal = goal
+                goalNum = goalNum + 1
+                if goalNum >= 4:
+                   break
             else:
                 goalSuccessTrack[goal].append(0)
                 if not env.isGameOver():
                     lastGoal = -1
+                    goalNum = 0
                     env.beginNextLife()
                                
             #intrinsicRewardMonitor = 0

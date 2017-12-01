@@ -6,7 +6,6 @@ import numpy as np
 from hdqn import Hdqn
 from PIL import Image
 from ale_python_interface import ALEInterface
-
 logger = logging.getLogger(__name__)
 
 
@@ -73,16 +72,21 @@ class ALEEnvironment():
     # self.goalCenterLoc.append([(8.0 + 16.0)/2, (21.0 + 36.0)/2])
     # self.goalCenterLoc.append([(69.0 + 77.0)/2, (21.0+36.0)/2])
     # self.goalCenterLoc.append([(37.0 + 47.0)/2, (40.0+53.0)/2])
-    self.goalCenterLoc.append([(40.0 + 45.0)/2, (49.0+54.0)/2])
-    self.goalCenterLoc.append([(66.0 + 76.0)/2, (57.0+72.0)/2])
-    self.goalCenterLoc.append([(8.0 + 19.0)/2, (57.0+72.0)/2])
-    self.goalCenterLoc.append([(6.0 + 12.0)/2, (39.0+47.0)/2])
+    for goal in self.goalSet:
+      goalCenter = [float(goal[0][0]+goal[1][0])/2, float(goal[0][1]+goal[1][1])/2]
+      self.goalCenterLoc.append(goalCenter)
     self.agentOriginLoc = [42, 33]
     self.agentLastX = 42
     self.agentLastY = 33
     self.reachedGoal = [0, 0, 0, 0]
-    self.histState = [self.getState(), self.getState(), self.getState(), self.getState()]
-    self.histStateInitial = list(self.histState)
+    self.histState = self.initializeHistState()
+    #self.histStateInitial = list(self.histState)
+
+  def initializeHistState(self):
+    histState = np.concatenate((self.getState(), self.getState()), axis = 2)
+    histState = np.concatenate((histState, self.getState()), axis = 2)
+    histState = np.concatenate((histState, self.getState()), axis = 2)
+    return histState
 
   def numActions(self):
     return len(self.actions)
@@ -101,7 +105,7 @@ class ALEEnvironment():
     self.life_lost = False
     for i in range(19):
       self.act(0) #wait for initialization
-    self.histState = [self.getState(), self.getState(), self.getState(), self.getState()]
+    self.histState = self.initializeHistState()
     self.agentLastX = self.agentOriginLoc[0]
     self.agentLastY = self.agentOriginLoc[1]
 
@@ -110,7 +114,7 @@ class ALEEnvironment():
     self.life_lost = False
     for i in range(19):
       self.act(0) #wait for initialization
-    self.histState = [self.getState(), self.getState(), self.getState(), self.getState()]
+    self.histState = self.initializeHistState()
     self.agentLastX = self.agentOriginLoc[0]
     self.agentLastY = self.agentOriginLoc[1]
     
@@ -118,6 +122,8 @@ class ALEEnvironment():
     lives = self.ale.lives()
     reward = self.ale.act(self.actions[action])
     self.life_lost = (not lives == self.ale.lives())
+    currState = self.getState()
+    self.histState = np.concatenate((self.histState[:, :, 1:], currState), axis = 2)
     return reward
 
   def getScreen(self):
@@ -160,7 +166,6 @@ class ALEEnvironment():
       # goalCenter = self.goalCenterLoc[goal]
       # agentX, agentY = self.getAgentLoc()
       # dis = np.sqrt((goalCenter[0] - agentX)*(goalCenter[0] - agentX) + (goalCenter[1]-agentY)*(goalCenter[1]-agentY)) 
-      # # print 10 - dis
       # return 10 - dis 
     else:
       lastGoalCenter = self.goalCenterLoc[lastGoal]
@@ -178,11 +183,24 @@ class ALEEnvironment():
     return np.reshape(resized, (84, 84, 1))
   
   def getStackedState(self):
-    currState = self.getState()
+    # currState = self.getState()
+    # self.histState = np.concatenate((self.histState[:, :, 1:], currState), axis = 2)
+    return self.histState
+    '''
+    #Image.fromarray(np.squeeze(currState)).save('./img/statemmmm.jpeg')
     self.histState.append(currState)
     self.histState = self.histState[-self.histLen:]
+    
+    stackedState = np.zeros((84,84,4))
+    for i in range(len(self.histState)):
+      state = self.histState[i]
+      for x in range(84):
+        for y in range(84):
+          stackedState[x, y, i] = state[x, y]
+    return stackedState
+    
     return np.reshape(self.histState, (84, 84, 4))
-
+    '''
   def isTerminal(self):
     if self.mode == 'train':
       return self.ale.game_over() or self.life_lost
