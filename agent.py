@@ -13,16 +13,15 @@ defaultTau = 0.001
 
 defaultAnnealSteps = 500000
 defaultEndEpsilon = 0.1
-defaultRandomPlaySteps = 100000
+defaultRandomPlaySteps = 200000
 
-############
 defaultMetaEpsilon = 1
 defaultMetaNSamples = 256
 controllerMemCap = 1000000
 metaMemCap = 50000
 maxReward = 1
 minReward = -1
-trueSubgoalOrder = [0, 1, 2, 3]
+#trueSubgoalOrder = [0, 1, 2]
 hardUpdateFrequency = 10000 * 4
 
 class Agent:
@@ -33,8 +32,8 @@ class Agent:
         self.controllerEpsilon = controllerEpsilon
         self.goalSet = goalSet
         self.metaEpsilon = metaEpsilon
-        self.nSamples = defaultNSample #############
-        self.metaNSamples = defaultMetaNSamples ################
+        self.nSamples = defaultNSample 
+        self.metaNSamples = defaultMetaNSamples 
         self.gamma = defaultGamma
         self.targetTau = tau
         self.net = net
@@ -45,7 +44,9 @@ class Agent:
         goalVec = utils.oneHot(goal)
         if self.controllerEpsilon[goal] < random.random():
             # predict action
-            return np.argmax(self.net.controllerNet.predict([np.reshape(state, (1, 84, 84, 4)), np.asarray([goalVec])], verbose=0))
+            dummyYtrue = np.zeros((1, 8))
+            dummyMask = np.zeros((1, 8))
+            return np.argmax(self.net.controllerNet.predict([np.reshape(state, (1, 84, 84, 4)), np.asarray([goalVec]), dummyYtrue, dummyMask], verbose=0)[1])
         return random.choice(self.actionSet)
 
     def setControllerEpsilon(self, epsilonArr):
@@ -54,7 +55,7 @@ class Agent:
     def selectGoal(self, state):
         if self.metaEpsilon < random.random():
             # predict action
-            pred = self.net.metaNet.predict(np.reshape(state, (1, 84, 84, 4)), verbose=0)
+            pred = self.net.metaNet.predict([np.reshape(state, (1, 84, 84, 4)), np.zeros((1,3)), np.zeros((1,3))], verbose=0)[1]
             return np.argmax(pred)
         return random.choice(self.goalSet)
 
@@ -86,9 +87,7 @@ class Agent:
 
     
     def _update(self, stepCount):
-        #exps = [random.choice(self.memory) for _ in range(self.nSamples)]
         batches = self.memory.sample(self.nSamples)
-        # stateVectors = np.squeeze(np.asarray([np.concatenate([exp.state, exp.goal], axis=1) for exp in exps]))
         stateVector = []
         goalVector = []
         for batch in batches:
@@ -97,73 +96,65 @@ class Agent:
             goalVector.append(utils.oneHot(exp.goal))
         stateVector = np.asarray(stateVector)
         goalVector = np.asarray(goalVector)
-        # nextStateVectors = np.squeeze(np.asarray([np.concatenate([exp.next_state, exp.goal], axis=1) for exp in exps]))
         nextStateVector = []
         for batch in batches:
             exp = batch[1]
             nextStateVector.append(exp.next_state)
         nextStateVector = np.asarray(nextStateVector)
-        rewardVectors = self.net.controllerNet.predict([stateVector, goalVector], verbose=0)
+        rewardVectors = self.net.controllerNet.predict([stateVector, goalVector, np.zeros((self.nSamples,8)), np.zeros((self.nSamples, 8 ))], verbose=0)[1]
+        
         rewardVectorsCopy = np.copy(rewardVectors)
-        nextStateRewardVectors = self.net.targetControllerNet.predict([nextStateVector, goalVector], verbose=0)
-
+        rewardVectors = np.zeros((self.nSamples, 8))
+        nextStateRewardVectors = self.net.targetControllerNet.predict([nextStateVector, goalVector, np.zeros((self.nSamples,8)), np.zeros((self.nSamples, 8 ))], verbose=0)[1]
+        
+        maskVector = np.zeros((self.nSamples, 8))
         for i, batch in enumerate(batches):
             exp = batch[1]
             idx = batch[0]
+            maskVector[i, exp.action] = 1. 
             rewardVectors[i][exp.action] = exp.reward
             if not exp.done:
                 rewardVectors[i][exp.action] += self.gamma * max(nextStateRewardVectors[i])
             self.memory.update(idx, np.abs(rewardVectors[i][exp.action] - rewardVectorsCopy[i][exp.action]))
         rewardVectors = np.asarray(rewardVectors)
-        loss = self.net.controllerNet.train_on_batch([stateVector, goalVector], rewardVectors)
-        
+        loss = self.net.controllerNet.train_on_batch([stateVector, goalVector, rewardVectors, maskVector], [np.zeros(self.nSamples), rewardVectors])
         #Update target network
-        # if (stepCount % hardUpdateFrequency == 1):
-        #     controllerWeights = self.net.controllerNet.get_weights()
-        #     controllerTargetWeights = self.net.targetControllerNet.get_weights()
-        #     for i in range(len(controllerWeights)):
-        #         controllerTargetWeights[i] = np.copy(controllerWeights[i])
-        #     self.net.targetControllerNet.set_weights(controllerTargetWeights)
         controllerWeights = self.net.controllerNet.get_weights()
         controllerTargetWeights = self.net.targetControllerNet.get_weights()
         for i in range(len(controllerWeights)):
-            controllerTargetWeights[i] = self.targetTau * np.copy(controllerWeights[i]) + (1 - self.targetTau) * controllerTargetWeights[i]
+            controllerTargetWeights[i] = self.targetTau * controllerWeights[i] + (1 - self.targetTau) * controllerTargetWeights[i]
         self.net.targetControllerNet.set_weights(controllerTargetWeights)
         return loss
         
 
     def _update_meta(self, stepCount):
-        if 0 < len(self.metaMemory):
-            batches = self.metaMemory.sample(self.metaNSamples)
-            #exps = [random.choice(self.metaMemory) for _ in range(self.metaNSamples)]
-            stateVectors = np.asarray([batch[1].state for batch in batches])
-            nextStateVectors = np.asarray([batch[1].next_state for batch in batches])
-            
-            rewardVectors = self.net.metaNet.predict(stateVectors, verbose=0)
-            rewardVectorsCopy = np.copy(rewardVectors)
-            nextStateRewardVectors = self.net.targetMetaNet.predict(nextStateVectors, verbose=0)
-
-            for i, batch in enumerate(batches):
-                exp = batch[1]
-                idx = batch[0]
-                rewardVectors[i][np.argmax(exp.goal)] = exp.reward
-                if not exp.done:
-                    rewardVectors[i][np.argmax(exp.goal)] += self.gamma * max(nextStateRewardVectors[i])
-                self.metaMemory.update(idx, np.abs(rewardVectors[i][exp.goal] - rewardVectorsCopy[i][exp.goal]))
-            loss = self.net.metaNet.train_on_batch(stateVectors, rewardVectors)
-            
-            #Update target network
-            # metaWeights = self.net.metaNet.get_weights()
-            # metaTargetWeights = self.net.targetMetaNet.get_weights()
-            # for i in range(len(metaWeights)):
-            #     metaTargetWeights[i] = np.copy(metaWeights[i])
-            # self.net.targetMetaNet.set_weights(metaTargetWeights)
-            metaWeights = self.net.metaNet.get_weights()
-            metaTargetWeights = self.net.targetMetaNet.get_weights()
-            for i in range(len(metaWeights)):
-                metaTargetWeights[i] = self.targetTau * np.copy(metaWeights[i]) + (1 - self.targetTau) * metaTargetWeights[i]
-            self.net.targetMetaNet.set_weights(metaTargetWeights)
-            return loss
+        batches = self.metaMemory.sample(self.metaNSamples)
+        stateVectors = np.asarray([batch[1].state for batch in batches])
+        nextStateVectors = np.asarray([batch[1].next_state for batch in batches])
+        
+        rewardVectors = self.net.metaNet.predict([stateVectors, np.zeros((self.nSamples,3)), np.zeros((self.nSamples, 3))], verbose=0)[1]
+        rewardVectorsCopy = np.copy(rewardVectors)
+        rewardVectors = np.zeros((self.metaNSamples, 3))
+        nextStateRewardVectors = self.net.targetMetaNet.predict([nextStateVectors, np.zeros((self.nSamples,3)), np.zeros((self.nSamples, 3))], verbose=0)[1]
+        maskVector = np.zeros((self.metaNSamples, 3))
+        
+        for i, batch in enumerate(batches):
+            exp = batch[1]
+            idx = batch[0]
+            maskVector[i, exp.goal] = 1. 
+            rewardVectors[i][exp.goal] = exp.reward
+            if not exp.done:
+                rewardVectors[i][np.argmax(exp.goal)] += self.gamma * max(nextStateRewardVectors[i])
+            self.metaMemory.update(idx, np.abs(rewardVectors[i][exp.goal] - rewardVectorsCopy[i][exp.goal]))
+        loss = self.net.metaNet.train_on_batch([stateVectors, rewardVectors, maskVector], [np.zeros(self.nSamples), rewardVectors])
+        
+        #Update target network
+        metaWeights = self.net.metaNet.get_weights()
+        metaTargetWeights = self.net.targetMetaNet.get_weights()
+        for i in range(len(metaWeights)):
+            metaTargetWeights[i] = self.targetTau * metaWeights[i] + (1 - self.targetTau) * metaTargetWeights[i]
+        self.net.targetMetaNet.set_weights(metaTargetWeights)
+        return loss
     def update(self, stepCount, meta=False):
         if meta:
             loss = self._update_meta(stepCount)

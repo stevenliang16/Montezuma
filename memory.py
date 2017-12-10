@@ -56,7 +56,7 @@ class SumTree:
     
 class Memory:   # stored as ( s, a, r, s_ ) in SumTree
     e = 0.01 #epsilon
-    a = 0.6 #alpha
+    a = 0.5 #alpha
 
     def __init__(self, capacity):
         self.tree = SumTree(capacity)

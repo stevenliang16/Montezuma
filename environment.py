@@ -31,19 +31,6 @@ class ALEEnvironment():
 
     if args.random_seed:
       self.ale.setInt('random_seed', args.random_seed)
-    '''
-    if args.record_screen_path:
-      if not os.path.exists(args.record_screen_path):
-        logger.info("Creating folder %s" % args.record_screen_path)
-        os.makedirs(args.record_screen_path)
-      logger.info("Recording screens to %s", args.record_screen_path)
-      self.ale.setString('record_screen_dir', args.record_screen_path)
-
-    if args.record_sound_filename:
-      logger.info("Recording sound to %s", args.record_sound_filename)
-      self.ale.setBool('sound', True)
-      self.ale.setString('record_sound_filename', args.record_sound_filename)
-    '''
     self.ale.loadROM(rom_file)
 
     if args.minimal_action_set:
@@ -61,26 +48,18 @@ class ALEEnvironment():
     self.life_lost = False
     self.initSrcreen = self.getScreen()
     self.goalSet = []
-    # self.goalSet.append([[8, 21], [16, 36]]) # top left door 0
-    # self.goalSet.append([[69, 21], [77, 36]]) # top right door 1
-    # self.goalSet.append([[37, 40], [47, 53]]) # middle ladder 2
-    self.goalSet.append([[41, 49],[44, 53]]) # middle ladder bottom 2
-    self.goalSet.append([[70, 58], [74, 66]]) # lower right ladder 4
+    self.goalSet.append([[70, 65], [74, 71]]) # lower right ladder 4
     self.goalSet.append([[11, 58], [15, 66]]) # lower left ladder 3
     self.goalSet.append([[7, 41], [11, 45]]) # key 5
     self.goalCenterLoc = []
-    # self.goalCenterLoc.append([(8.0 + 16.0)/2, (21.0 + 36.0)/2])
-    # self.goalCenterLoc.append([(69.0 + 77.0)/2, (21.0+36.0)/2])
-    # self.goalCenterLoc.append([(37.0 + 47.0)/2, (40.0+53.0)/2])
     for goal in self.goalSet:
       goalCenter = [float(goal[0][0]+goal[1][0])/2, float(goal[0][1]+goal[1][1])/2]
       self.goalCenterLoc.append(goalCenter)
     self.agentOriginLoc = [42, 33]
     self.agentLastX = 42
     self.agentLastY = 33
-    self.reachedGoal = [0, 0, 0, 0]
+    self.reachedGoal = [0, 0, 0]
     self.histState = self.initializeHistState()
-    #self.histStateInitial = list(self.histState)
 
   def initializeHistState(self):
     histState = np.concatenate((self.getState(), self.getState()), axis = 2)
@@ -90,7 +69,10 @@ class ALEEnvironment():
 
   def numActions(self):
     return len(self.actions)
-
+    
+  def resetGoalReach(self):
+    self.reachedGoal = [0, 0, 0]
+    
   def restart(self):
     # In test mode, the game is simply initialized. In train mode, if the game
     # is in terminal state due to a life loss but not yet game over, then only
@@ -103,6 +85,7 @@ class ALEEnvironment():
     ):
       self.ale.reset_game()
     self.life_lost = False
+    self.reachedGoal = [0, 0, 0]
     for i in range(19):
       self.act(0) #wait for initialization
     self.histState = self.initializeHistState()
@@ -112,6 +95,7 @@ class ALEEnvironment():
     
   def beginNextLife(self):
     self.life_lost = False
+    self.reachedGoal = [0, 0, 0]
     for i in range(19):
       self.act(0) #wait for initialization
     self.histState = self.initializeHistState()
@@ -163,10 +147,6 @@ class ALEEnvironment():
   def distanceReward(self, lastGoal, goal):
     if (lastGoal == -1):
       lastGoalCenter = self.agentOriginLoc
-      # goalCenter = self.goalCenterLoc[goal]
-      # agentX, agentY = self.getAgentLoc()
-      # dis = np.sqrt((goalCenter[0] - agentX)*(goalCenter[0] - agentX) + (goalCenter[1]-agentY)*(goalCenter[1]-agentY)) 
-      # return 10 - dis 
     else:
       lastGoalCenter = self.goalCenterLoc[lastGoal]
     goalCenter = self.goalCenterLoc[goal]
@@ -183,24 +163,8 @@ class ALEEnvironment():
     return np.reshape(resized, (84, 84, 1))
   
   def getStackedState(self):
-    # currState = self.getState()
-    # self.histState = np.concatenate((self.histState[:, :, 1:], currState), axis = 2)
     return self.histState
-    '''
-    #Image.fromarray(np.squeeze(currState)).save('./img/statemmmm.jpeg')
-    self.histState.append(currState)
-    self.histState = self.histState[-self.histLen:]
-    
-    stackedState = np.zeros((84,84,4))
-    for i in range(len(self.histState)):
-      state = self.histState[i]
-      for x in range(84):
-        for y in range(84):
-          stackedState[x, y, i] = state[x, y]
-    return stackedState
-    
-    return np.reshape(self.histState, (84, 84, 4))
-    '''
+
   def isTerminal(self):
     if self.mode == 'train':
       return self.ale.game_over() or self.life_lost
@@ -235,20 +199,4 @@ class ALEEnvironment():
     if (self.reachedGoal[goal] == 1):
       return False
     return True
-
-  # Debugging
-  '''
-  def plot(self):
-    print self.getAgentLoc()
-    im = self.getScreen()
-    for goalCenter in self.goalCenterLoc:
-      for x in range (int(goalCenter[0])-2, int(goalCenter[0])+2):
-        for y in range (int(goalCenter[1])-2, int(goalCenter[1])+2):
-          im[y][x] = 255
-    for x in range (self.agentOriginLoc[0]-2, self.agentOriginLoc[0]+2):
-      for y in range (self.agentOriginLoc[1]-2, self.agentOriginLoc[1]+2):
-        im[y][x] = 255
-    Image.fromarray(im).save('goalLocMarked.jpeg')
-  '''
-
   

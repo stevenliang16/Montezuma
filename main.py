@@ -43,19 +43,16 @@ def main():
 
     actionMap = [0, 1, 2, 3, 4, 5, 11, 12]
     actionExplain = ['no action', 'jump', 'up', 'right', 'left', 'down', 'jump right', 'jump left']
-    goalExplain = ['middle ladder', 'lower right ladder', 'lower left ladder', 'key']
+    goalExplain = ['lower right ladder', 'lower left ladder', 'key']
     stepCount = 0
-    goalSuccessTrack = [deque(), deque(), deque(), deque(), deque(), deque()] # deque in python is linkedlist, list is actually an array
-    goalSuccessCount = [0, 0, 0, 0, 0, 0]
+    goalSuccessTrack = [deque(), deque(), deque(), deque()] # deque in python is linkedlist, list is actually an array
+    goalSuccessCount = [0, 0, 0, 0]
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", default="montezuma_revenge.bin")
     parser.add_argument("--display_screen", type=str2bool, default=False)
     parser.add_argument("--frame_skip", default=4)
-    #parser.add_argument("--repeat_action_probability", default=0.25)
     parser.add_argument("--color_averaging", default=False)
     parser.add_argument("--random_seed")
-    #parser.add_argument("--record_screen_path", default="./record")
-    #parser.add_argument("--record_sound_filename")
     parser.add_argument("--minimal_action_set", default=False)
     parser.add_argument("--screen_width", default=84)
     parser.add_argument("--screen_height", default=84)
@@ -71,47 +68,44 @@ def main():
     
     # Initilize network and agent
     if (args.load_weight):
-        defaultRandomPlaySteps = 100000
+        defaultRandomPlaySteps = 200000
         print('loading weight')
         hdqn.loadWeight()
         print('loading weight complete')
-        agent = Agent(hdqn, range(8), range(4))
+        agent = Agent(hdqn, range(8), range(3))
     else:
-        defaultRandomPlaySteps = 100000
-        agent = Agent(hdqn, range(8), range(4))
-
+        defaultRandomPlaySteps = 200000
+        agent = Agent(hdqn, range(8), range(3))
     intrinsicRewardMonitor = 0
     externalRewardMonitor = 0
-    for episode in range(30000):
+    for episode in range(80000):
         print("\n\n### EPISODE "  + str(episode) + "###")
         print("\n\n### STEPS "  + str(stepCount) + "###")
         # Restart the game
         env.restart()
         episodeSteps = 0
         # set goalNum to hardcoded subgoal
-        goalNum = 0
         lastGoal = -1
         while not env.isGameOver() and episodeSteps <= maxStepsPerEpisode:
             totalExternalRewards = 0 # NOT SURE IF IT SHOULD BE CLEARED HERE!
             stateLastGoal = env.getStackedState()
             # nextState = stateLastGoal
-            # goal = agent.selectGoal(env.getState())
-            goal = agent.selectTrueGoal(goalNum)
-            #goal = 1
+            goal = agent.selectGoal(stateLastGoal)
             if (len(goalSuccessTrack[goal]) > 100):
                 firstElement = goalSuccessTrack[goal].popleft()
                 goalSuccessCount[goal] -= firstElement
-            # print('predicted subgoal is: ' + goalExplain[goal])
+            print('predicted subgoal is: ' + goalExplain[goal])
             while not env.isTerminal() and not env.goalReached(goal) and episodeSteps <= maxStepsPerEpisode:
                 state = env.getStackedState()
                 action = agent.selectMove(state, goal)
                 externalRewards = env.act(actionMap[action])
+                if (externalRewards != 0):
+                    externalRewards = 1.0
                 # Debugging
                 if (saveExternalRewardScreen and externalRewards == 100):
                     im = Image.fromarray(np.squeeze(env.getState()))
                     im.save('keyGet.jpeg')
                     saveExternalRewardScreen = False
-                #print('reward is :' + str(externalRewards))
                 stepCount += 1
                 episodeSteps += 1
                 # save the model every 50000 steps
@@ -120,14 +114,7 @@ def main():
                 nextState = env.getStackedState()
                 distanceReward = env.distanceReward(lastGoal, goal)
                 # only assign intrinsic reward if the goal is reached and it has not been reached previously
-                intrinsicRewards = agent.criticize(env.goalReached(goal), actionMap[action], env.isTerminal(), distanceReward, args.use_sparse_reward)
-                ''' Debugging
-                if (intrinsicRewards == 1.0):
-                    print('subgoal reached')
-                    im = Image.fromarray(np.squeeze(nextState))
-                    im.save('goalReaced.jpeg')
-                    sys.exit()
-                '''
+                intrinsicRewards = agent.criticize(env.goalNotReachedBefore(goal) & env.goalReached(goal), actionMap[action], env.isTerminal(), distanceReward, args.use_sparse_reward)
                 # Store transition and update network params
                 exp = ActorExperience(state, goal, action, intrinsicRewards, nextState, env.isTerminal())
                 agent.store(exp, meta=False)
@@ -138,14 +125,10 @@ def main():
                         print('start training (random walk ends)')
                     if (stepCount % 4 == 0):
                         loss = agent.update(stepCount, meta=False)
-                        # agent.update(stepCount, meta=True)
-                        # Loss visualization
-                        lossPlot = session.run(merged, feed_dict={tensorVarLoss: loss})
-                        sumWriterLoss.add_summary(lossPlot, stepCount)
-                        sumWriterLoss.flush()
+                        agent.update(stepCount, meta=True)
                 
                 # Update external reward for D2
-                totalExternalRewards += externalRewards
+                totalExternalRewards += externalRewards + intrinsicRewards
                 
                 # Update data for visualization
                 externalRewardMonitor += externalRewards
@@ -170,36 +153,28 @@ def main():
                 externalPlot = session.run(merged, feed_dict={tensorVar: externalRewardMonitor})
                 sumWriterExternal.add_summary(externalPlot, stepCount)
                 sumWriterExternal.flush()
-                middlePlot = session.run(merged, feed_dict={tensorVarMiddle: float(goalSuccessCount[0])/(0.1+len(goalSuccessTrack[0]))})
-                sumWriterMiddle.add_summary(middlePlot, stepCount)
-                sumWriterMiddle.flush()
-                lowerRightPlot = session.run(merged, feed_dict={tensorVarLowerRight: float(goalSuccessCount[1])/(0.1+len(goalSuccessTrack[1]))})
+                lowerRightPlot = session.run(merged, feed_dict={tensorVarLowerRight: float(goalSuccessCount[0])/(0.1+len(goalSuccessTrack[0]))})
                 sumWriterLowerRight.add_summary(lowerRightPlot, stepCount)
                 sumWriterLowerRight.flush()
-                lowerLeftPlot = session.run(merged, feed_dict={tensorVarLowerLeft: float(goalSuccessCount[2])/(0.1+len(goalSuccessTrack[2]))})
+                lowerLeftPlot = session.run(merged, feed_dict={tensorVarLowerLeft: float(goalSuccessCount[1])/(0.1+len(goalSuccessTrack[1]))})
                 sumWriterLowerLeft.add_summary(lowerLeftPlot, stepCount)
                 sumWriterLowerLeft.flush()
-                keyPlot = session.run(merged, feed_dict={tensorVarKey: float(goalSuccessCount[3])/(0.1+len(goalSuccessTrack[3]))})
+                keyPlot = session.run(merged, feed_dict={tensorVarKey: float(goalSuccessCount[2])/(0.1+len(goalSuccessTrack[2]))})
                 sumWriterKey.add_summary(keyPlot, stepCount)
                 sumWriterKey.flush()
-
                 lastGoal = goal
-                goalNum = goalNum + 1
-                if goalNum >= 4:
-                   break
+                # get key
+                if goal == 2:
+                    break
             else:
                 goalSuccessTrack[goal].append(0)
                 if not env.isGameOver():
                     lastGoal = -1
-                    goalNum = 0
                     env.beginNextLife()
-                               
-            #intrinsicRewardMonitor = 0
-            #externalRewardMonitor = 0
 
         if (not annealComplete):
-            #Annealing 
-            # agent.annealMetaEpsilon(stepCount)
+            # Annealing 
+            agent.annealMetaEpsilon(stepCount)
             agent.annealControllerEpsilon(stepCount, goal)
 
 if __name__ == "__main__":
